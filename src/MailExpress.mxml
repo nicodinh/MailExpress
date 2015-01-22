@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009" 
+					   xmlns:s="library://ns.adobe.com/flex/spark" 
+					   xmlns:mx="library://ns.adobe.com/flex/mx" width="1600" height="874" showStatusBar="false" backgroundColor="#E7E6E6">
+
+	<fx:Script>
+		<![CDATA[
+			import mx.collections.ArrayList;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			
+			import spark.components.Window;
+			import spark.events.IndexChangeEvent;
+			
+			[Bindable]
+			public var results:ArrayList = new ArrayList();
+			
+			[Bindable]
+			public var nbrMails:int;
+			
+			protected function button1_clickHandler(event:MouseEvent):void
+			{
+				navigateur.location = adresse.text;
+			}
+			
+			protected function button2_clickHandler(event:MouseEvent):void
+			{
+				navigateur.historyBack();
+			}
+
+			protected function button3_clickHandler(event:MouseEvent):void
+			{
+				navigateur.historyForward();
+			}
+			
+			//vire les doublons Array
+			private function removeDuplicate(arr:Array):Array {
+				
+				var dico:Dictionary=new Dictionary(true);
+				var finalArray:Array = new Array();
+				for each (var item:String in arr) {
+					if (! dico[item]) {
+						finalArray.push(item);
+						dico[item]=true;
+					}
+				}
+				return finalArray;
+			}
+			
+			private function progressBarInit():void
+			{
+				barChargement.setProgress(0,100);
+				barChargement.label = "Analyse en cours: %3%%";
+			}
+			
+			private function update_info():void
+			{
+				barChargement.setProgress(50,100);
+				barChargement.label = "Analyse de la source";	
+				//met a jour l'adresse de la page en cours
+				adresse.text = navigateur.location;
+				//recuperer le code src de la page html entre les balises body
+				var contentSource:String = navigateur.domWindow.document.getElementsByTagName('body')[0].innerHTML;
+				sourceHTML.text = contentSource;
+				//recupere les mails a partir du code src html
+				var regexMail:RegExp = /([0-9a-zA-Z]+[-._+&])*[0-9a-zA-Z]+@([-0-9a-zA-Z]+[.])+[a-zA-Z]{2,6}/g;		
+				var tmpArray:Array = new Array();
+				if ((tmpArray = contentSource.match(regexMail)).length != 0)
+				{
+					barChargement.setProgress(70,100);
+					barChargement.label = "Récupération en cours";
+					tmpArray = removeDuplicate(tmpArray);
+					var i:int;		
+					for (i = 0; i < tmpArray.length; i++)
+					{					
+						results.addItem(tmpArray[i]);						
+					}
+					//affiche le nombre total de mails recuperer sans doublons
+					nbrMails = results.length;
+				}
+				barChargement.setProgress(100,100);
+				barChargement.label = "Analyse complete: %3%%";	
+			}
+
+
+			protected function suppressionDoublons_clickHandler(event:MouseEvent):void
+			{
+				var noDoublonsArray:Array = new Array();
+				var i:int;
+				var j:int;
+				for (i = 0; i < results.length; i++)
+				{
+					if (i == 0)
+						noDoublonsArray.push(results.getItemAt(i));
+					else
+						noDoublonsArray.unshift(results.getItemAt(i));
+				}
+				noDoublonsArray = removeDuplicate(noDoublonsArray);
+				results.removeAll();
+				for (j = 0; j < noDoublonsArray.length; j++)
+				{
+					results.addItem(noDoublonsArray[j]);						
+				}
+				nbrMails = results.length;
+			}
+	
+			/* -- Debut -- boite de dialogue pour selectionner un fichier*/	
+			
+			public var fileToSave:File = File.documentsDirectory;
+			
+			public function selectTextFile(root:File):void
+			{
+				/* charger un fichier
+				var txtFilter:FileFilter = new FileFilter("Text(*.as;*.css;*.html;*.txt;*.xml)", "*.as;*.css;*.html;*.txt;*.xml");
+				root.browseForOpen("Open", [txtFilter]);
+				root.addEventListener(Event.SELECT, fileSelected);
+				*/
+				root.browseForSave("Exporter");
+				root.addEventListener(Event.SELECT, fileSelected);
+			}
+			
+			public function fileSelected(event:Event):void
+			{							
+				var fileStream:FileStream = new FileStream();
+				var i:int;
+				if ( fileToSave.extension == null ) 
+					fileToSave.nativePath +=".txt";
+				fileStream.open(fileToSave, FileMode.WRITE);
+				for (i = 0; i < results.length; i++)
+				{
+					fileStream.writeUTFBytes(results.getItemAt(i).toString());
+					fileStream.writeUTFBytes("\r\n");
+				}
+				fileStream.close();
+				root.removeEventListener(Event.SELECT, fileSelected);
+			}
+
+			protected function Exporter_clickHandler(event:MouseEvent):void
+			{	
+				selectTextFile(fileToSave);
+			}
+			/* -- Fin --*/
+			
+			
+			
+			/* -- Debut -- Effacer la liste des mails, en demandant une confirmation */
+			protected function effacerArray_clickHandler(event:MouseEvent):void
+			{
+				Alert.show("Voulez-vous vraiment l'effacer?","Effacer la liste des mails",3,this,ClickHandler);
+			}
+			
+			private function ClickHandler(event:CloseEvent):void
+			{
+				if(event.detail == Alert.YES)
+				{
+					results.removeAll();
+					nbrMails = results.length;		
+				}
+			}
+			/* -- Fin --*/
+			
+			
+			
+			/* -- Debut -- supprimme le mail selectionné dans la liste */
+			protected function selectionListMail_clickHandler(event:MouseEvent):void
+			{
+				if (listeMail.selectedIndex != -1)
+					deleteMail(listeMail.selectedIndex);
+			}
+			
+			private function deleteMail(selectedIndex:int):void
+			{
+				results.removeItemAt(selectedIndex);
+				nbrMails = results.length;
+			}
+			/* -- Fin --*/
+
+
+			
+
+		]]>
+	</fx:Script>
+	<s:states>
+		<s:State name="browserSearch"/>
+		<s:State name="automaticSearch"/>
+	</s:states>
+
+	<fx:Declarations>
+		<!-- Placer ici les éléments non visuels (services et objets de valeur, par exemple). -->
+	</fx:Declarations>
+	
+	<mx:HTML x="13" y="92" location="http://www.google.fr" width="1024" height="768" id="navigateur" locationChange="progressBarInit()" complete="update_info()" includeIn="browserSearch"/>
+	<s:TextInput x="13" y="39" id="adresse" width="704" text="http://www.google.fr" includeIn="browserSearch"/>
+	<s:Button x="965" y="41" label="valider" click="button1_clickHandler(event)" fontWeight="bold" includeIn="browserSearch"/>
+	<s:Button x="742" y="39" label="&lt;&lt;&lt;&lt;" fontWeight="bold" click="button2_clickHandler(event)" includeIn="browserSearch"/>
+	<s:Button x="820" y="39" label="&gt;&gt;&gt;&gt;" fontWeight="bold" click="button3_clickHandler(event)" includeIn="browserSearch"/>
+	<s:List x="1107" y="61" width="432" height="382" id="listeMail" dataProvider="{results}" includeIn="browserSearch"></s:List>
+	<s:TextArea x="1107" y="635" width="423" height="178" id="sourceHTML" includeIn="browserSearch"/>
+	<s:Label x="1283" y="603" text="source HTML" fontWeight="bold" includeIn="browserSearch"/>
+	<s:Label x="1303" y="43" text="emails" fontWeight="bold" includeIn="browserSearch"/>
+	<s:Label x="1325" y="853" text="Nicolas AZARI - 3/12 juillet 2011 - v0.2" fontWeight="bold" includeIn="browserSearch"/>
+	<s:Label x="1465" y="43" text="{nbrMails}" includeIn="browserSearch"/>
+	<s:Button x="1107" y="451" label="Supprimer les doublons" width="174" click="suppressionDoublons_clickHandler(event)" includeIn="browserSearch"/>
+	<mx:ProgressBar includeIn="browserSearch" x="13" y="69" labelPlacement="left" id="barChargement" mode="manual"/>
+	<s:Button includeIn="browserSearch" x="1469" y="451" label="Exporter" id="Exporter" click="Exporter_clickHandler(event)"/>
+	<s:Button includeIn="browserSearch" x="1303" y="451" label="Vider tout" color="#000000" fontWeight="normal" fontStyle="normal" id="effacerArray" click="effacerArray_clickHandler(event)"/>
+	<s:Button includeIn="browserSearch" x="1107" y="480" label="Supprimer la séléction" width="174" id="selectionListMail" click="selectionListMail_clickHandler(event)"/>
+</s:WindowedApplication>
